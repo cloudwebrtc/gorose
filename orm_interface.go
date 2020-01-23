@@ -7,7 +7,7 @@ type IOrm interface {
 	IOrmExecute
 	IOrmSession
 	//ISession
-	Hello()
+	Close()
 	BuildSql(operType ...string) (string, []interface{}, error)
 	Table(tab interface{}) IOrm
 	// fields=select
@@ -64,5 +64,5 @@ type IOrm interface {
 	// 此外你还可以使用 lockForUpdate 方法。“for update”锁避免选择行被其它共享锁修改或删除：
 	// 会阻塞其他锁定性读对锁定行的读取（非锁定性读仍然可以读取这些记录，lock in share mode 和 for update 都是锁定性读）
 	LockForUpdate() *Orm
-	ResetUnion() IOrm
+	//ResetUnion() IOrm
 }

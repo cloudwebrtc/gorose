@@ -1,11 +1,10 @@
 package gorose
 
 import (
-	"fmt"
 	"github.com/gohouse/t"
 	"strings"
 )
-
+//type TransactionHandlerFunc func(db IOrm) error
 // Orm ...
 type Orm struct {
 	ISession
@@ -26,9 +25,9 @@ func NewOrm(e IEngin) *Orm {
 	return orm
 }
 
-// Hello ...
-func (dba *Orm) Hello() {
-	fmt.Println("hello gorose orm struct")
+// Close ...
+func (dba *Orm) Close() {
+	dba.GetISession().Close()
 }
 
 // ExtraCols 额外的字段
@@ -293,12 +292,12 @@ func (dba *Orm) ResetWhere() IOrm {
 	return dba
 }
 
-// ResetUnion ...
-func (dba *Orm) ResetUnion() IOrm {
-	dba.union = ""
-	dba.GetISession().SetUnion(nil)
-	return dba
-}
+//// ResetUnion ...
+//func (dba *Orm) ResetUnion() IOrm {
+//	dba.union = ""
+//	dba.GetISession().SetUnion(nil)
+//	return dba
+//}
 
 // BuildSql
 // operType(select, insert, update, delete)
@@ -316,13 +315,13 @@ func (dba *Orm) BuildSql(operType ...string) (a string, b []interface{}, err err
 		dba.fields = getTagName(dba.GetIBinder().GetBindResult(), TAGNAME)
 	}
 	if len(operType) == 0 || (len(operType) > 0 && strings.ToLower(operType[0]) == "select") {
-		// 根据传入的struct, 设置limit, 有效的节约空间
-		if dba.union == "" {
-			var bindType = dba.GetIBinder().GetBindType()
-			if bindType == OBJECT_MAP || bindType == OBJECT_STRUCT {
-				dba.Limit(1)
-			}
-		}
+		//// 根据传入的struct, 设置limit, 有效的节约空间
+		//if dba.union == "" {
+		//	var bindType = dba.GetIBinder().GetBindType()
+		//	if bindType == OBJECT_MAP || bindType == OBJECT_STRUCT {
+		//		dba.Limit(1)
+		//	}
+		//}
 		a, b, err = NewBuilder(dba.GetISession().GetIEngin().GetDriver()).BuildQuery(dba)
 		if dba.GetISession().GetTransaction() {
 			a = a + dba.GetPessimisticLock()

@@ -7,8 +7,12 @@ import (
 	"strings"
 )
 
-// Get : select more rows , relation limit set
+// Select : select one or more rows , relation limit set
 func (dba *Orm) Select() error {
+	switch dba.GetIBinder().GetBindType(){
+	case OBJECT_STRUCT,OBJECT_MAP,OBJECT_MAP_T:
+		dba.Limit(1)
+	}
 	// 构建sql
 	sqlStr, args, err := dba.BuildSql()
 	if err != nil {
@@ -22,6 +26,7 @@ func (dba *Orm) Select() error {
 
 // First : select one row , relation limit set
 func (dba *Orm) First() (result Data, err error) {
+	dba.GetIBinder().SetBindType(OBJECT_STRING)
 	err = dba.Limit(1).Select()
 	if err != nil {
 		return
@@ -35,6 +40,7 @@ func (dba *Orm) First() (result Data, err error) {
 
 // Get : select more rows , relation limit set
 func (dba *Orm) Get() (result []Data, err error) {
+	dba.GetIBinder().SetBindType(OBJECT_STRING)
 	tabname := dba.GetISession().GetIBinder().GetBindName()
 	prefix := dba.GetISession().GetIBinder().GetBindPrefix()
 	tabname2 := strings.TrimPrefix(tabname, prefix)
@@ -80,43 +86,80 @@ func (dba *Orm) Min(min string) (interface{}, error) {
 
 // _unionBuild : build union select real
 func (dba *Orm) _unionBuild(union, field string) (interface{}, error) {
-	var tmp interface{}
-
-	dba.union = union + "(" + field + ") as " + union
-	// 缓存fields字段,暂时由union占用
-	fieldsTmp := dba.fields
-	dba.fields = []string{dba.union}
-	dba.GetISession().SetUnion(true)
-
-	// 构建sql
-	sqls, args, err := dba.BuildSql()
-	if err != nil {
-		return tmp, err
+	fields := union + "(" + field + ") as " + union
+	dba.fields = []string{fields}
+	res, err := dba.First()
+	if r, ok := res[union]; ok {
+		return r, err
 	}
-
-	// 执行查询
-	_, err = dba.GetISession().Query(sqls, args...)
-	if err != nil {
-		return tmp, err
-	}
-
-	// 重置union, 防止复用的时候感染
-	dba.union = ""
-	// 返还fields
-	dba.fields = fieldsTmp
-
-	// 语法糖获取union值
-	if dba.GetISession().GetUnion() != nil {
-		tmp = dba.GetISession().GetUnion()
-		// 获取之后, 释放掉
-		dba.GetISession().SetUnion(nil)
-	}
-
-	return tmp, nil
+	return nil, err
 }
+//func (dba *Orm) _unionBuild_bak(union, field string) (interface{}, error) {
+//	var tmp interface{}
+//
+//	dba.union = union + "(" + field + ") as " + union
+//	// 缓存fields字段,暂时由union占用
+//	fieldsTmp := dba.fields
+//	dba.fields = []string{dba.union}
+//	dba.GetISession().SetUnion(true)
+//
+//	// 构建sql
+//	sqls, args, err := dba.BuildSql()
+//	if err != nil {
+//		return tmp, err
+//	}
+//
+//	// 执行查询
+//	_, err = dba.GetISession().Query(sqls, args...)
+//	if err != nil {
+//		return tmp, err
+//	}
+//
+//	// 重置union, 防止复用的时候感染
+//	dba.union = ""
+//	// 返还fields
+//	dba.fields = fieldsTmp
+//
+//	// 语法糖获取union值
+//	if dba.GetISession().GetUnion() != nil {
+//		tmp = dba.GetISession().GetUnion()
+//		// 获取之后, 释放掉
+//		dba.GetISession().SetUnion(nil)
+//	}
+//
+//	return tmp, nil
+//}
 
 // Pluck 获取一列数据, 第二个字段可以指定另一个字段的值作为这一列数据的key
 func (dba *Orm) Pluck(field string, fieldKey ...string) (v interface{}, err error) {
+	var resMap = make(map[interface{}]interface{}, 0)
+	var resSlice = make([]interface{}, 0)
+
+	res, err := dba.Get()
+
+	if err != nil {
+		return
+	}
+
+	if len(res) > 0 {
+		for _, val := range res {
+			if len(fieldKey) > 0 {
+				resMap[val[fieldKey[0]]] = val[field]
+			} else {
+				resSlice = append(resSlice, val[field])
+			}
+		}
+	}
+	if len(fieldKey) > 0 {
+		v = resMap
+	} else {
+		v = resSlice
+	}
+	return
+}
+
+// Pluck_bak ...
+func (dba *Orm) Pluck_bak(field string, fieldKey ...string) (v interface{}, err error) {
 	var binder = dba.GetISession().GetIBinder()
 	var resMap = make(map[interface{}]interface{}, 0)
 	var resSlice = make([]interface{}, 0)
@@ -186,8 +229,17 @@ func (dba *Orm) Pluck(field string, fieldKey ...string) (v interface{}, err erro
 	return
 }
 
-// Get : select more rows , relation limit set
+// Value is get a row of a field value
 func (dba *Orm) Value(field string) (v interface{}, err error) {
+	res, err := dba.First()
+	if v, ok := res[field]; ok {
+		return v, err
+	}
+	return
+}
+
+// Value_bak ...
+func (dba *Orm) Value_bak(field string) (v interface{}, err error) {
 	dba.Limit(1)
 	err = dba.Select()
 	if err != nil {
@@ -223,10 +275,12 @@ func (dba *Orm) _valueFromStruct(bindResult reflect.Value, field string) (v inte
 // 然后不断的增加offset去取更多数据, 从而达到分块处理更多数据的目的
 //TODO 后续增加 gorotine 支持, 提高批量数据处理效率, 预计需要增加获取更多链接的支持
 func (dba *Orm) Chunk(limit int, callback func([]Data) error) (err error) {
-	var page = 0
-	var tableName = dba.GetISession().GetIBinder().GetBindName()
+	var page = 1
+	var tabname = dba.GetISession().GetIBinder().GetBindName()
+	prefix := dba.GetISession().GetIBinder().GetBindPrefix()
+	tabname2 := strings.TrimPrefix(tabname, prefix)
 	// 先执行一条看看是否报错, 同时设置指定的limit, offset
-	result, err := dba.Table(tableName).Limit(limit).Offset(page * limit).Get()
+	result, err := dba.Table(tabname2).Limit(limit).Page(page).Get()
 	if err != nil {
 		return
 	}
@@ -238,7 +292,7 @@ func (dba *Orm) Chunk(limit int, callback func([]Data) error) (err error) {
 		// 清理绑定数据, 进行下一次操作, 因为绑定数据是每一次执行的时候都会解析并保存的
 		// 而第二次以后执行的, 都会再次解析并保存, 数据结构是slice, 故会累积起来
 		dba.ClearBindValues()
-		result, _ = dba.Offset(page * limit).Get()
+		result, _ = dba.Page(page).Get()
 	}
 	return
 }
@@ -298,9 +352,11 @@ func (dba *Orm) ChunkStruct(limit int, callback func() error) (err error) {
 // DB().Where("age", 18) ===> DB().Data(gorose.Data{"age":19}).Where().Update()
 func (dba *Orm) Loop(limit int, callback func([]Data) error) (err error) {
 	var page = 0
-	var tableName = dba.GetISession().GetIBinder().GetBindName()
+	var tabname = dba.GetISession().GetIBinder().GetBindName()
+	prefix := dba.GetISession().GetIBinder().GetBindPrefix()
+	tabname2 := strings.TrimPrefix(tabname, prefix)
 	// 先执行一条看看是否报错, 同时设置指定的limit
-	result, err := dba.Table(tableName).Limit(limit).Get()
+	result, err := dba.Table(tabname2).Limit(limit).Get()
 	if err != nil {
 		return
 	}
@@ -341,21 +397,25 @@ func (dba *Orm) Loop(limit int, callback func([]Data) error) (err error) {
 //		}
 //	]
 //}
-func (dba *Orm) Paginate() (res Data, err error) {
+func (dba *Orm) Paginate(page ...int) (res Data, err error) {
+	if len(page) > 0 {
+		dba.Page(page[0])
+	}
 	var limit = dba.GetLimit()
 	if limit == 0 {
 		limit = 15
 	}
 	var offset = dba.GetOffset()
 	var currentPage = int(math.Ceil(float64(offset+1) / float64(limit)))
-	// 统计总量
-	count, err := dba.Count()
-	dba.ResetUnion()
+	//dba.ResetUnion()
 	// 获取结果
-	resData,err := dba.Get()
+	resData, err := dba.Get()
 	if err != nil {
 		return
 	}
+	// 统计总量
+	dba.offset = 0
+	count, err := dba.Count()
 	var lastPage = int(math.Ceil(float64(count) / float64(limit)))
 	var nextPage = currentPage + 1
 	var prevPage = currentPage - 1
@@ -369,7 +429,7 @@ func (dba *Orm) Paginate() (res Data, err error) {
 		"next_page_url":  If(nextPage > lastPage, nil, nextPage),
 		"prev_page_url":  If(prevPage < 1, nil, prevPage),
 		//"data":           dba.GetIBinder().GetBindResultSlice().Interface(),
-		"data":           resData,
+		"data": resData,
 	}
 
 	return

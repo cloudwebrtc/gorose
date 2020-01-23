@@ -11,7 +11,7 @@ func TestOrm_BuildSql2(t *testing.T) {
 	db := DB()
 	var u = "age=age+1,num=num+1"
 	var wheres interface{}
-	wheres = [][]interface{}{{"a", ">", "b"}, {"a", "b"}}
+	wheres = [][]interface{}{{"a", ">", "b"}, {"a", "b"},{"a is null"}}
 	sqlstr, a, b := db.Force().Table("users").Data(u).Where(wheres).BuildSql("update")
 
 	t.Log(sqlstr, a, b)
@@ -80,7 +80,7 @@ func TestOrm_BuildSql6(t *testing.T) {
 }
 
 func TestOrm_First(t *testing.T) {
-	res, err := DB().Table("users").First()
+	res, err := DB().Table(Users{}).Where("uid",1).First()
 	if err != nil {
 		t.Error(err.Error())
 	}
@@ -92,15 +92,15 @@ func TestOrm_Select(t *testing.T) {
 	var err error
 
 	var u = []Users{}
-	err = db.Table(&u).Limit(2).Select()
+	err = db.Table(&u).Select()
 	t.Log(err, u, db.LastSql())
 
 	var u2 = Users{}
-	err = db.Table(&u2).Limit(1).Select()
+	err = db.Table(&u2).Select()
 	t.Log(err, u2, db.LastSql())
 
 	var u3 Users
-	err = db.Table(&u3).Limit(1).Select()
+	err = db.Table(&u3).Select()
 	t.Log(err, u3, db.LastSql())
 
 	var u4 []Users
@@ -116,14 +116,14 @@ func TestOrm_Select2(t *testing.T) {
 	db := DB()
 	var err error
 
-	var u = UsersMap{}
+	var u = []UsersMap{}
 	err = db.Table(&u).Limit(2).Select()
 	if err != nil {
 		t.Error(err.Error())
 	}
 	t.Log(u)
 
-	var u3 = UsersMapSlice{}
+	var u3 = UsersMap{}
 	err = db.Table(&u3).Limit(1).Select()
 	if err != nil {
 		t.Error(err.Error())
@@ -194,7 +194,7 @@ func TestOrm_Pluck(t *testing.T) {
 	//var u []Users
 	ormObj := orm.Table("users")
 	//res,err := ormObj.Pluck("name", "uid")
-	res, err := ormObj.Limit(5).Pluck("name")
+	res, err := ormObj.Limit(5).Pluck("name","uid")
 	if err != nil {
 		t.Error(err.Error())
 	}
@@ -206,11 +206,12 @@ func TestOrm_Value(t *testing.T) {
 
 	//var u = UsersMap{}
 	//var u = UsersMapSlice{}
-	////var u Users
-	////var u []Users
+	//var u Users
+	//var u []Users
 	//ormObj := db.Table(&u)
-	ormObj := db.Table("users")
-	res, err := ormObj.Limit(5).Value("name")
+	//ormObj := db.Table("users")
+	ormObj := db.Table(Users{})
+	res, err := ormObj.Limit(5).Value("uid")
 	if err != nil {
 		t.Error(err.Error())
 	}
@@ -244,7 +245,7 @@ func TestOrm_Count2(t *testing.T) {
 func TestOrm_Chunk(t *testing.T) {
 	orm := DB()
 
-	var u = UsersMapSlice{}
+	var u = []UsersMap{}
 	err := orm.Table(&u).Chunk(1, func(data []Data) error {
 		for _, item := range data {
 			t.Log(item["name"])
@@ -282,7 +283,7 @@ func TestOrm_Chunk2(t *testing.T) {
 func TestOrm_Loop(t *testing.T) {
 	db := DB()
 
-	var u = UsersMapSlice{}
+	var u = []UsersMap{}
 	//aff,err := db.Table(&u).Force().Data(Data{"age": 18}).Update()
 	//fmt.Println(aff,err)
 	err := db.Table(&u).Where("age", 18).Loop(2, func(data []Data) error {
@@ -317,10 +318,24 @@ func TestOrm_Paginate2(t *testing.T) {
 	db := DB()
 
 	var u []Users
-	res, err := db.Table(&u).Limit(2).Paginate()
+	res, err := db.Table(&u).Where("uid",">",1).Limit(2).Paginate(3)
 	if err != nil {
 		t.Error(err.Error())
 	}
+	t.Log(res, u)
+	t.Log(db.LastSql())
+}
+
+func TestOrm_Sum(t *testing.T) {
+	db := DB()
+
+	var u Users
+	//res, err := db.Table(Users{}).First()
+	res, err := db.Table(&u).Where(Data{"uid":1}).Sum("age")
+	if err != nil {
+		t.Error(err.Error())
+	}
+	//fmt.Printf("%#v\n",res)
 	t.Log(res, u)
 	t.Log(db.LastSql())
 }
